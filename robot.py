@@ -1,13 +1,17 @@
 import sys
 from phoenix6 import SignalLogger
 import wpilib
+from wpilib import AddressableLED, DigitalInput, LEDPattern, Color
 from dashboard import Dashboard
 from drivetrain.controlStrategies.autoDrive import AutoDrive
 from drivetrain.controlStrategies.trajectory import Trajectory
 from drivetrain.drivetrainCommand import DrivetrainCommand
 from drivetrain.drivetrainControl import DrivetrainControl
 from humanInterface.driverInterface import DriverInterface
-from humanInterface.ledControl import LEDControl
+from subsystems import Components, limelight
+from rev import SparkMax
+
+# from humanInterface.ledControl import LEDControl
 from navigation.forceGenerators import PointObstacle
 from utils.segmentTimeTracker import SegmentTimeTracker
 from utils.signalLogging import logUpdate
@@ -22,14 +26,42 @@ from AutoSequencerV2.autoSequencer import AutoSequencer
 from utils.powerMonitor import PowerMonitor
 from wpimath.geometry import Translation2d, Pose2d, Rotation2d
 
-class MyRobot(wpilib.TimedRobot):
+kLEDBuffer = 150
 
+
+class MyRobot(wpilib.TimedRobot):
     #########################################################
     ## Common init/update for all modes
     def robotInit(self):
         # Since we're defining a bunch of new things here, tell pylint
         # to ignore these instantiations in a method.
         # pylint: disable=attribute-defined-outside-init
+        # LEDS
+        self.led = wpilib.AddressableLED(8)
+        self.ledData = [wpilib.AddressableLED.LEDData() for _ in range(kLEDBuffer)]
+        self.rainbowFirstPixelHue = 0
+        self.led.setLength(kLEDBuffer)
+        self.led.setData(self.ledData)
+        self.led.start()
+
+        self.limitSwitch = DigitalInput(7)
+
+        # Elevator
+        self.elevator = Components.Elevator(10)
+
+        # Shoulder
+        self.shoulder = Components.Shoulder(11)
+
+        # # Intake
+        self.intake = Components.Intake(12)
+
+        self.wrist = Components.Wrist(13)
+
+        # CLimber
+        self.climb = SparkMax(14, SparkMax.MotorType.kBrushless)
+
+        #################################################################################################################################
+
         remoteRIODebugSupport()
 
         self.crashLogger = CrashLogger()
@@ -43,10 +75,10 @@ class MyRobot(wpilib.TimedRobot):
         self.driveTrain = DrivetrainControl()
         self.autodrive = AutoDrive()
 
-        self.stt = SegmentTimeTracker()      
+        self.stt = SegmentTimeTracker()
 
         self.dInt = DriverInterface()
-        self.ledCtrl = LEDControl()
+        self.stick = self.dInt.ctrl
 
         self.autoSequencer = AutoSequencer()
 
@@ -64,8 +96,51 @@ class MyRobot(wpilib.TimedRobot):
 
         self.autoHasRun = False
 
-
     def robotPeriodic(self):
+        # self.color(3, 38, 252)
+        self.led.setData(self.ledData)
+
+        # COLOR
+        if self.limitSwitch.get() == True:
+            self.color(0, 0, 255)  # Blue
+        if self.limitSwitch.get() == False:
+            self.color(255, 0, 0)  # Red
+
+        # CLIMBER
+        if self.stick.getLeftBumper():
+            self.climb.set(1)
+            self.rainbow()
+        elif self.stick.getRightBumper():
+            self.climb.set(-1)
+        else:
+            self.climb.set(0)
+
+        # INTAKE
+        if self.stick.getRawButton(8):
+            self.intake.set(-0.6)
+        elif self.stick.getRawButton(7):
+            self.intake.set(0.6)
+        else:
+            self.intake.set(0)
+
+        # SHOULDER
+        if self.stick.getRawButton(1):
+            self.shoulder.set(-0.3)
+        elif self.stick.getRawButton(4):
+            self.shoulder.set(0.3)
+        else:
+            self.shoulder.set(0)
+
+        # ELEVATOR
+        if self.stick.getRawButton(3):
+            self.elevator.set(-0.3)
+        elif self.stick.getRawButton(2):
+            self.elevator.set(0.3)
+        else:
+            self.elevator.set(-self.elevator.elevatorFeedForward.calculate(0.01))
+
+        #########################################################
+
         self.stt.start()
 
         self.dInt.update()
@@ -75,22 +150,20 @@ class MyRobot(wpilib.TimedRobot):
         self.stt.mark("Drivetrain")
 
         self.autodrive.updateTelemetry()
-        self.driveTrain.poseEst._telemetry.setCurAutoDriveWaypoints(self.autodrive.getWaypoints())
-        self.driveTrain.poseEst._telemetry.setCurObstacles(self.autodrive.rfp.getObstacleStrengths())
+        self.driveTrain.poseEst._telemetry.setCurAutoDriveWaypoints(
+            self.autodrive.getWaypoints()
+        )
+        self.driveTrain.poseEst._telemetry.setCurObstacles(
+            self.autodrive.rfp.getObstacleStrengths()
+        )
         self.stt.mark("Telemetry")
-
-        self.ledCtrl.setAutoDrive(self.autodrive.isRunning())
-        self.ledCtrl.setStuck(self.autodrive.rfp.isStuck())
-        self.ledCtrl.update()
-        self.stt.mark("LED Ctrl")
 
         logUpdate()
         self.stt.end()
 
     #########################################################
-    ## Autonomous-Specific init and update
-    def autonomousInit(self):
 
+    def autonomousInit(self):
         # Start up the autonomous sequencer
         self.autoSequencer.initialize()
 
@@ -101,7 +174,6 @@ class MyRobot(wpilib.TimedRobot):
         self.autoHasRun = True
 
     def autonomousPeriodic(self):
-
         self.autoSequencer.update()
 
         # Operators cannot control in autonomous
@@ -119,16 +191,17 @@ class MyRobot(wpilib.TimedRobot):
         # If we're starting teleop but haven't run auto, set a nominal default pose
         # This is needed because initial pose is usually set by the autonomous routine
         if not self.autoHasRun:
-            self.driveTrain.poseEst.setKnownPose(
-                Pose2d(1.0, 1.0, Rotation2d(0.0))
-            )
-
+            self.driveTrain.poseEst.setKnownPose(Pose2d(1.0, 1.0, Rotation2d(0.0)))
 
     def teleopPeriodic(self):
-
         # TODO - this is technically one loop delayed, which could induce lag
         # Probably not noticeable, but should be corrected.
-        self.driveTrain.setManualCmd(self.dInt.getCmd())
+        print(self.limitSwitch.get())
+        # if self.limitSwitch.get() == True:
+        #     self.led.setData(kLEDBuffer)
+
+        # if self.limitSwitch.get() == False:
+        #     self.led.setData(kLEDBuffer)
 
         if self.dInt.getGyroResetCmd():
             self.driveTrain.resetGyro()
@@ -137,16 +210,16 @@ class MyRobot(wpilib.TimedRobot):
             # For test purposes, inject a series of obstacles around the current pose
             ct = self.driveTrain.poseEst.getCurEstPose().translation()
             tfs = [
-                #Translation2d(1.7, -0.5),
-                #Translation2d(0.75, -0.75),
-                #Translation2d(1.7, 0.5),
+                # Translation2d(1.7, -0.5),
+                # Translation2d(0.75, -0.75),
+                # Translation2d(1.7, 0.5),
                 Translation2d(0.75, 0.75),
                 Translation2d(2.0, 0.0),
                 Translation2d(0.0, 1.0),
                 Translation2d(0.0, -1.0),
             ]
             for tf in tfs:
-                obs = PointObstacle(location=(ct+tf), strength=0.5)
+                obs = PointObstacle(location=(ct + tf), strength=0.5)
                 self.autodrive.rfp.addObstacleObservation(obs)
 
         self.autodrive.setRequest(self.dInt.getAutoDrive())
@@ -174,7 +247,6 @@ class MyRobot(wpilib.TimedRobot):
     #########################################################
     ## Cleanup
     def endCompetition(self):
-
         # Sometimes `robopy test pyfrc_test.py` will invoke endCompetition() without completing robotInit(),
         # this will create a confusing exception here because we can reach self.rioMonitor.stopThreads()
         # when self.rioMonitor does not exist.
@@ -186,6 +258,21 @@ class MyRobot(wpilib.TimedRobot):
         destroyAllSingletonInstances()
         super().endCompetition()
 
+    def rainbow(self):
+        for i in range(kLEDBuffer):
+            hue = (self.rainbowFirstPixelHue + (i * 180 / kLEDBuffer)) % 180
+            self.ledData[i].setHSV(int(hue), 255, 128)
+        self.rainbowFirstPixelHue += 3
+        self.rainbowFirstPixelHue %= 180
+
+    def color(self, R: int, G: int, B: int):
+        for i in range(kLEDBuffer):
+            hue = (self.rainbowFirstPixelHue + (i * 180 / kLEDBuffer)) % 180
+            self.ledData[i].setRGB(R, G, B)
+        self.rainbowFirstPixelHue += 3
+        self.rainbowFirstPixelHue %= 180
+
+
 def remoteRIODebugSupport():
     if __debug__ and "run" in sys.argv:
         print("Starting Remote Debug Support....")
@@ -196,4 +283,3 @@ def remoteRIODebugSupport():
         else:
             debugpy.listen(("0.0.0.0", 5678))
             debugpy.wait_for_client()
-

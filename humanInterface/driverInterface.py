@@ -1,12 +1,18 @@
 from drivetrain.drivetrainCommand import DrivetrainCommand
-from drivetrain.drivetrainPhysical import MAX_FWD_REV_SPEED_MPS,MAX_STRAFE_SPEED_MPS,\
-MAX_ROTATE_SPEED_RAD_PER_SEC,MAX_TRANSLATE_ACCEL_MPS2,MAX_ROTATE_ACCEL_RAD_PER_SEC_2
+from drivetrain.drivetrainPhysical import (
+    MAX_FWD_REV_SPEED_MPS,
+    MAX_STRAFE_SPEED_MPS,
+    MAX_ROTATE_SPEED_RAD_PER_SEC,
+    MAX_TRANSLATE_ACCEL_MPS2,
+    MAX_ROTATE_ACCEL_RAD_PER_SEC_2,
+)
 from utils.allianceTransformUtils import onRed
 from utils.faults import Fault
 from utils.signalLogging import addLog
 from wpimath import applyDeadband
 from wpimath.filter import SlewRateLimiter
 from wpilib import XboxController
+
 
 class DriverInterface:
     """Class to gather input from the driver of the robot"""
@@ -25,7 +31,9 @@ class DriverInterface:
         # Driver motion rate limiters - enforce smoother driving
         self.velXSlewRateLimiter = SlewRateLimiter(rateLimit=MAX_TRANSLATE_ACCEL_MPS2)
         self.velYSlewRateLimiter = SlewRateLimiter(rateLimit=MAX_TRANSLATE_ACCEL_MPS2)
-        self.velTSlewRateLimiter = SlewRateLimiter(rateLimit=MAX_ROTATE_ACCEL_RAD_PER_SEC_2)
+        self.velTSlewRateLimiter = SlewRateLimiter(
+            rateLimit=MAX_ROTATE_ACCEL_RAD_PER_SEC_2
+        )
 
         # Navigation commands
         self.autoDrive = False
@@ -35,19 +43,19 @@ class DriverInterface:
         self.gyroResetCmd = False
 
         # Logging
-        #addLog("DI FwdRev Cmd", lambda: self.velXCmd, "mps")
-        #addLog("DI Strafe Cmd", lambda: self.velYCmd, "mps")
-        #addLog("DI Rot Cmd", lambda: self.velTCmd, "radps")
-        #addLog("DI gyroResetCmd", lambda: self.gyroResetCmd, "bool")
-        #addLog("DI autoDriveToSpeaker", lambda: self.autoDriveToSpeaker, "bool")
-        #addLog("DI autoDriveToPickup", lambda: self.autoDriveToPickup, "bool")
+        # addLog("DI FwdRev Cmd", lambda: self.velXCmd, "mps")
+        # addLog("DI Strafe Cmd", lambda: self.velYCmd, "mps")
+        # addLog("DI Rot Cmd", lambda: self.velTCmd, "radps")
+        # addLog("DI gyroResetCmd", lambda: self.gyroResetCmd, "bool")
+        # addLog("DI autoDriveToSpeaker", lambda: self.autoDriveToSpeaker, "bool")
+        # addLog("DI autoDriveToPickup", lambda: self.autoDriveToPickup, "bool")
 
     def update(self):
         # value of contoller buttons
 
         if self.ctrl.isConnected():
             # Convert from  joystic sign/axis conventions to robot velocity conventions
-            vXJoyRaw = self.ctrl.getLeftY() * -1
+            vXJoyRaw = self.ctrl.getLeftY() * 1
             vYJoyRaw = self.ctrl.getLeftX() * -1
             vRotJoyRaw = self.ctrl.getRightX() * -1
 
@@ -63,7 +71,7 @@ class DriverInterface:
 
             # TODO - if the driver wants a slow or sprint button, add it here.
             slowMult = 1.0 if (self.ctrl.getRightBumper()) else 0.7
-            #slowMult = 1.0
+            # slowMult = 1.0
 
             # Shape velocity command
             velCmdXRaw = vXJoyWithDeadband * MAX_STRAFE_SPEED_MPS * slowMult
@@ -91,9 +99,6 @@ class DriverInterface:
             self.autoDrive = False
             self.createDebugObstacle = False
             self.connectedFault.setFaulted()
-
-
-
 
     def getCmd(self) -> DrivetrainCommand:
         retval = DrivetrainCommand()
