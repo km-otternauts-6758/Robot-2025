@@ -1,4 +1,4 @@
-dep:
+d:
 	py -3 -m robotpy deploy
 	
 pid:

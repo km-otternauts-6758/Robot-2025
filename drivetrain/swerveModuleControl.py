@@ -10,6 +10,7 @@ from wpilib import TimedRobot
 
 
 from drivetrain.swerveModuleGainSet import SwerveModuleGainSet
+
 # from wrappers.wrapperedKraken import WrapperedKraken
 from wrappers.wrapperedSparkMax import WrapperedSparkMax
 from wrappers.wrapperedSRXMagEncoder import WrapperedSRXMagEncoder
@@ -23,10 +24,10 @@ from drivetrain.drivetrainPhysical import MAX_FWD_REV_SPEED_MPS
 
 class SwerveModuleControl:
     """
-    Control logic for one swerve drive module. 
+    Control logic for one swerve drive module.
 
     Convention Reminders:
-    The **module** refers to the whole assembly, including two motors, their built-in sensors, 
+    The **module** refers to the whole assembly, including two motors, their built-in sensors,
     the azimuth angle sensor, the hardware, everything.
 
     The **azimuth** is the motor, sensor, and mechanism to point the wheel in a specific direction.
@@ -45,13 +46,13 @@ class SwerveModuleControl:
 
     def __init__(
         self,
-        moduleName:str,
-        wheelMotorCanID:int,
-        azmthMotorCanID:int,
-        azmthEncoderPortIdx:int,
-        azmthOffset:float,
-        invertWheel:bool,
-        invertAzmth:bool
+        moduleName: str,
+        wheelMotorCanID: int,
+        azmthMotorCanID: int,
+        azmthEncoderPortIdx: int,
+        azmthOffset: float,
+        invertWheel: bool,
+        invertAzmth: bool,
     ):
         """Instantiate one swerve drive module
 
@@ -72,7 +73,7 @@ class SwerveModuleControl:
         )
 
         # Note the azimuth encoder inversion should be fixed, based on the physical design of the encoder itself,
-        # plus the swerve module physical construction. It might need to be tweaked here though if we change 
+        # plus the swerve module physical construction. It might need to be tweaked here though if we change
         # module brands or sensor brands.
         self.azmthEnc = WrapperedSRXMagEncoder(
             azmthEncoderPortIdx, moduleName + "_azmthEnc", azmthOffset, False
@@ -93,7 +94,6 @@ class SwerveModuleControl:
         self.azmthVoltage = 0.0
 
         self._prevMotorDesSpeed = 0
-
 
         addLog(
             getAzmthDesTopicName(moduleName),
@@ -116,32 +116,31 @@ class SwerveModuleControl:
             "frac",
         )
 
-
         # Simulation Support Only
         self.wheelSimFilter = SlewRateLimiter(24.0)
 
-    def getActualPosition(self)->SwerveModulePosition:
+    def getActualPosition(self) -> SwerveModulePosition:
         """
         Returns:
             SwerveModulePosition: The position of the module (azmth and wheel) as measured by sensors
         """
         return self.actualPosition
 
-    def getActualState(self)->SwerveModuleState:
+    def getActualState(self) -> SwerveModuleState:
         """
         Returns:
             SwerveModuleState: The state of the module (azmth and wheel) as measured by sensors
         """
         return self.actualState
 
-    def getDesiredState(self)->SwerveModuleState:
+    def getDesiredState(self) -> SwerveModuleState:
         """
         Returns:
             SwerveModuleState: The commanded, desired state of the module (azmth and wheel)
         """
         return self.desiredState
 
-    def setClosedLoopGains(self, gains:SwerveModuleGainSet):
+    def setClosedLoopGains(self, gains: SwerveModuleGainSet):
         """Set feed-forward and closed loop gains for the module
 
         Args:
@@ -157,7 +156,7 @@ class SwerveModuleControl:
             gains.azmthP.get(), gains.azmthI.get(), gains.azmthD.get()
         )
 
-    def setDesiredState(self, desState:SwerveModuleState):
+    def setDesiredState(self, desState: SwerveModuleState):
         """Main command input - Call this to tell the module to go to a certian wheel speed and azimuth angle
 
         Args:
@@ -186,7 +185,7 @@ class SwerveModuleControl:
         # Optimize our incoming swerve command to minimize motion
         self.optimizedDesiredState = self.desiredState
         self.optimizedDesiredState.optimize(self.actualState.angle)
-        
+
         # Use a PID controller to calculate the voltage for the azimuth motor
         self.azmthCtrl.setSetpoint(self.optimizedDesiredState.angle.degrees())  # type: ignore
         self.azmthVoltage = self.azmthCtrl.calculate(self.actualState.angle.degrees())
@@ -195,12 +194,16 @@ class SwerveModuleControl:
         # Scale speed by cosine of angle error. This scales down movement perpendicular to the desired
         # direction of travel that can occur when modules change directions. This results in smoother
         # driving.
-        self.optimizedDesiredState.speed *= (self.optimizedDesiredState.angle - self.actualState.angle ).cos()
+        self.optimizedDesiredState.speed *= (
+            self.optimizedDesiredState.angle - self.actualState.angle
+        ).cos()
 
         # Send voltage and speed commands to the wheel motor
         motorDesSpd = dtLinearToMotorRot(self.optimizedDesiredState.speed)
-        motorVoltageFF = self.wheelMotorFF.calculate(self._prevMotorDesSpeed, motorDesSpd) #This is the problem child of the new non-backwards compatable Robotpy update. actualstate.speed is "prev" and motorDesSpd is "cur"
-        self.wheelMotor.setVelCmd(motorDesSpd, motorVoltageFF)                            
+        motorVoltageFF = self.wheelMotorFF.calculate(
+            self._prevMotorDesSpeed, motorDesSpd
+        )  # This is the problem child of the new non-backwards compatable Robotpy update. actualstate.speed is "prev" and motorDesSpd is "cur"
+        self.wheelMotor.setVelCmd(motorDesSpd, motorVoltageFF)
 
         self._prevMotorDesSpeed = motorDesSpd  # save for next loop
 
@@ -209,7 +212,9 @@ class SwerveModuleControl:
             # sensor data for the next loop.
 
             # Very simple voltage/motor model of azimuth rotation
-            self.actualState.angle += Rotation2d.fromDegrees(self.azmthVoltage / 12.0 * 1000.0 * 0.02)
+            self.actualState.angle += Rotation2d.fromDegrees(
+                self.azmthVoltage / 12.0 * 1000.0 * 0.02
+            )
             self.actualPosition.angle = self.actualState.angle
 
             # Wheel speed is slew-rate filtered to roughly simulate robot inertia

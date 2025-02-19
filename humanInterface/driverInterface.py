@@ -12,13 +12,25 @@ from utils.signalLogging import addLog
 from wpimath import applyDeadband
 from wpimath.filter import SlewRateLimiter
 from wpilib import XboxController
+from subsystems.Components import Shoulder, Wrist, Elevator, Intake, Climb
+import enum
+
+kElevatorButton = 0
+
+
+# class ElevatorButton(enum.Enum):
+#     NONE = 0
+#     L1 = 1
+#     L2 = 2
+#     L3 = 3
+#     L4 = 4
 
 
 class DriverInterface:
     """Class to gather input from the driver of the robot"""
 
     def __init__(self):
-        # contoller
+        # controller
         ctrlIdx = 0
         self.ctrl = XboxController(ctrlIdx)
         self.connectedFault = Fault(f"Driver XBox controller ({ctrlIdx}) unplugged")
@@ -56,7 +68,7 @@ class DriverInterface:
         if self.ctrl.isConnected():
             # Convert from  joystic sign/axis conventions to robot velocity conventions
             vXJoyRaw = self.ctrl.getLeftY() * 1
-            vYJoyRaw = self.ctrl.getLeftX() * -1
+            vYJoyRaw = self.ctrl.getLeftX() * 1
             vRotJoyRaw = self.ctrl.getRightX() * -1
 
             # Correct for alliance
@@ -65,9 +77,9 @@ class DriverInterface:
                 vYJoyRaw *= -1.0
 
             # deadband
-            vXJoyWithDeadband = applyDeadband(vXJoyRaw, 0.05)
-            vYJoyWithDeadband = applyDeadband(vYJoyRaw, 0.05)
-            vRotJoyWithDeadband = applyDeadband(vRotJoyRaw, 0.05)
+            vXJoyWithDeadband = applyDeadband(vXJoyRaw, 0.2)
+            vYJoyWithDeadband = applyDeadband(vYJoyRaw, 0.2)
+            vRotJoyWithDeadband = applyDeadband(vRotJoyRaw, 0.2)
 
             # TODO - if the driver wants a slow or sprint button, add it here.
             slowMult = 1.0 if (self.ctrl.getRightBumper()) else 0.7
@@ -107,11 +119,25 @@ class DriverInterface:
         retval.velT = self.velTCmd
         return retval
 
-    def getAutoDrive(self) -> bool:
-        return self.autoDrive
+    # def getAutoDrive(self) -> bool:
+    #     return self.autoDrive
 
-    def getGyroResetCmd(self) -> bool:
-        return self.gyroResetCmd
+    # def getGyroResetCmd(self) -> bool:
+    #     return self.gyroResetCmd
 
-    def getCreateObstacle(self) -> bool:
-        return self.createDebugObstacle
+    # def getCreateObstacle(self) -> bool:
+    #     return self.createDebugObstacle
+
+    # def getElevator(self) -> ElevatorButton:
+    #     if (
+    #         316 < self.ctrl.getPOV(kElevatorButton) < 359
+    #         and 0 < self.ctrl.getPOV(kElevatorButton) < 45
+    #     ):
+    #         return ElevatorButton.L1
+    #     elif 46 < self.ctrl.getPOV(kElevatorButton) < 135:
+    #         return ElevatorButton.L2
+    #     elif 136 < self.ctrl.getPOV(kElevatorButton) < 225:
+    #         return ElevatorButton.L3
+    #     elif 226 < self.ctrl.getPOV(kElevatorButton) < 315:
+    #         return ElevatorButton.L4
+    #     return ElevatorButton.NONE

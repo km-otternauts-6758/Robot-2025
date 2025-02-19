@@ -48,7 +48,7 @@ class Webserver(metaclass=Singleton):
 
     # Ensure we invoke shutdown procedures on the class destruction
     def __del__(self):
-        if(self.serverThread.is_alive()):
+        if self.serverThread.is_alive():
             print("Web Server shutting down...")
             self.shutdown()
 

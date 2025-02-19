@@ -17,8 +17,8 @@ Defines the physical dimensions and characteristics of the drivetrain
 
 # Wheel base half width: Distance from the center of the frame rail
 # out to the center of the "contact patch" where the wheel meets the ground
-WHEEL_BASE_HALF_WIDTH_M = inchesToMeters(24 / 2.0)
-WHEEL_BASE_HALF_LENGTH_M = inchesToMeters(24 / 2.0)
+WHEEL_BASE_HALF_WIDTH_M = inchesToMeters(11 / 2.0)
+WHEEL_BASE_HALF_LENGTH_M = inchesToMeters(11 / 2.0)
 
 # Additional distance from the wheel contact patch out to the edge of the bumper
 BUMPER_THICKNESS_M = inchesToMeters(2.5)
@@ -94,10 +94,10 @@ MAX_ROTATE_ACCEL_RAD_PER_SEC_2 = (
 # 5 - Redeploy code, verify that the  encoder readings are correct as each module is manually rotated
 
 
-FR_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(-53.17142)
-FL_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(68.54505)
-BR_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(15.21538)
-BL_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(-44.52526)
+FR_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(-53.82197)
+FL_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(70.347254)
+BR_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(13.375824)
+BL_ENCODER_MOUNT_OFFSET_RAD = deg2Rad(-45.301091)
 
 # brewner was here
 # Module Indices (for ease of array manipulation)
