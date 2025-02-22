@@ -1,6 +1,6 @@
-from math import pi
-import time
 import sys
+import time
+from math import pi
 
 import wpilib
 from networktables import NetworkTables
@@ -22,6 +22,8 @@ from humanInterface.driverInterface import DriverInterface
 # from humanInterface.ledControl import LEDControl
 from navigation.forceGenerators import PointObstacle
 from subsystems import Components, limelight
+
+# from subsystems.presets import Presets
 from utils.calibration import CalibrationWrangler
 from utils.crashLogger import CrashLogger
 from utils.faults import FaultWrangler
@@ -44,7 +46,7 @@ class MyRobot(wpilib.TimedRobot):
         # pylint: disable=attribute-defined-outside-init
         self.enableLiveWindowInTest(True)
         self.state = True
-        self.wristSetpoint = 0.52
+        self.wristSetpoint = 0.616
 
         # LEDS
         self.led = wpilib.AddressableLED(0)
@@ -65,9 +67,8 @@ class MyRobot(wpilib.TimedRobot):
 
         # Elevator
         self.elevator = Components.Elevator(13)
-        # self.elevatorPid = TrapezoidProfile(TrapezoidProfile.Constraints(1, 1))
 
-        # self.elevator.setSmartDashboard(SendableRegistry.setName)
+        self.elevator.setSmartDashboard(SendableRegistry.setName)
         SendableRegistry.setName(self.elevator.elevatorPid, "Elevator")
 
         # Shoulder
@@ -78,8 +79,9 @@ class MyRobot(wpilib.TimedRobot):
 
         self.wrist = Components.Wrist(
             11,
-            # 2 * pi
         )
+        #     # 2 * pi
+        # )
 
         # CLimber
         self.climb = SparkMax(10, SparkMax.MotorType.kBrushless)
@@ -121,23 +123,22 @@ class MyRobot(wpilib.TimedRobot):
 
         # Normal robot code updates every 20ms, but not everything needs to be that fast.
         # Register slower-update periodic functions
-        self.addPeriodic(self.pwrMon.update, 0.2, 0.0)
-        self.addPeriodic(self.crashLogger.update, 1.0, 0.0)
-        self.addPeriodic(CalibrationWrangler().update, 0.5, 0.0)
-        self.addPeriodic(FaultWrangler().update, 0.2, 0.0)
+        # self.addPeriodic(self.pwrMon.update, 0.2, 0.0)
+        # self.addPeriodic(self.crashLogger.update, 1.0, 0.0)
+        # self.addPeriodic(CalibrationWrangler().update, 0.5, 0.0)
+        # self.addPeriodic(FaultWrangler().update, 0.2, 0.0)
 
         self.autoHasRun = False
 
     def robotPeriodic(self):
         self.led.setData(self.ledData)
-
-        # print("Elevator", self.elevator.getPosition())
+        self.getStickButtonInputs()
+        # print("Joystick:", self.stick.getRawButton(1) == True)
+        # print(f"Outputs:  {self.getStickButtonInputs}")
+        print("Elevator", self.elevator.getPosition())
         print("Wrist", self.wrist.getPosition())
-        print("errorWrist", self.wrist.wristPid.getError())
-        print("wristSetpoint", self.wristSetpoint)
-        # print("Shoulder", self.shoulder.getPosition())
-        # print("ShoulderError", self.shoulder.shoulderPid.getError())
-        print("STATE", self.state)
+        print("Shoulder", self.shoulder.getPosition())
+        print("WristSetpoint", self.wrist.wristPid.getSetpoint())
 
         if self.limitSwitch.get() == False:
             self.elevator.elevatorEncoder.setPosition(0)
@@ -165,7 +166,10 @@ class MyRobot(wpilib.TimedRobot):
         logUpdate()
         self.stt.end()
 
-    #########################################################
+        #########################################################
+
+    def clamp(self, value: float, minval: float, maxval: float):
+        return max(min(value, maxval), minval)
 
     def autonomousInit(self):
         # Start up the autonomous sequencer
@@ -191,7 +195,8 @@ class MyRobot(wpilib.TimedRobot):
     def autonomousExit(self):
         self.autoSequencer.end()
 
-    #########################################################
+        #########################################################
+
     ## Teleop-Specific init and update
     def teleopInit(self):
         # clear existing telemetry trajectory
@@ -215,7 +220,7 @@ class MyRobot(wpilib.TimedRobot):
         # print("time", self.timer.get())
         # print("WristError", self.wrist.wristPid.getError())
         # print("Wrist", self.wrist.getPosition())
-        print("Climb", self.climbEncoder.getPosition())
+        # print("Climb", self.climbEncoder.getPosition())
 
         if self.timer.get() >= 125:
             self.color(160, 100, 100)
@@ -238,65 +243,193 @@ class MyRobot(wpilib.TimedRobot):
         elif self.stick2.getLeftTriggerAxis() > 0:
             self.intake.set(1)
         else:
-            self.intake.set(self.intake.intakeFeed.calculate(0.1))
+            self.intake.set(-self.intake.intakeFeed.calculate(0.1))
 
-        # # SHOULDER
-        # if self.stick2.getRawButton(5):
-        #     self.shoulder.set(-0.3)
+        # if self.stick.getPOV() == 0:
+        # self.shoulder.set(
+        #     self.shoulder.calculate(self.shoulder.getPosition() * 10, 3.16),
+        # )
+
+        # self.elevator.set(
+        #     self.elevator.calculate(self.elevator.getPosition(), -6.84)
+        #     + -self.elevator.elevatorFeedForward.calculate(0.3)
+        # )
+
+        # self.blueGradient()
+        # elif self.stick.getPOV() == 180:
+        # self.shoulder.set(
+        #     self.shoulder.calculate(self.shoulder.getPosition() * 10, 4),
+        # )
+        # self.elevator.set(
+        #     self.elevator.calculate(self.elevator.getPosition(), -3.222)
+        #     + -self.elevator.elevatorFeedForward.calculate(0.3)
+        # )
+        # self.blueGradient()
+        # if self.stick.getRawButton(5) == True:
+        #     self.elevator.set(0.3)
+        # elif self.stick.getRawButton(6) == True:
+        #     self.elevator.set(-0.3)
+        # else:
+        #     self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
+
+        # if self.stick.getRawButton(5) == True:
+        #     self.elevator.set(-0.3)
+        #     self.blueGradient()
+        # elif self.getStickButtonInputs() == False:
+        #     self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
+
+        # if self.stick.getPOV() == 0:
+        #     self.shoulder.set(
+        #         self.shoulder.calculate(self.shoulder.getPosition(), 0.34),
+        #     )
+
+        #     # self.elevator.set(
+        #     #     self.elevator.calculate(self.elevator.getPosition(), -6.84)
+        #     #     + self.elevator.elevatorFeedForward.calculate(0.3)
+        #     # )
+        # elif self.stick.getPOV() == 180:
+        #     self.shoulder.set(
+        #         self.shoulder.calculate(self.shoulder.getPosition(), 0.4),
+        #     )
+        # else:
+        #     self.shoulder.set(0)
+        # self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
+
+        # OTher wrist preset value = 0.87
+
+        if self.stick2.getPOV() == 90:
+            self.shoulder.set(0.3)
+
+        elif self.stick2.getPOV() == 270:
+            self.shoulder.set(-0.3)
+
+        elif self.stick2.getPOV() == 0:
+            self.elevator.set(0.3)
+
+        elif self.stick2.getPOV() == 180:
+            self.elevator.set(-0.3)
+
+        # CORAL STATION PRESET
+        elif self.stick.getPOV() == 0:
+            # self.shoulder.set(
+            #     self.shoulder.shoulderPid.calculate(
+            #         self.shoulder.shoulderEncoder.getOutput(), 0.267
+            #     )
+            # )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -5.04)
+            )
+
+        else:
+            self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
+            # self.shoulder.set(0)
+
+        #     # self.shoulder.set(0.0)
+        #     self.elevator.elevatorFeedForward.calculate(0)
+
+        # SHOULDER Clamped Shoulder
+        # # if self.stick2.getPOV() == 0:
+        # # #     self.shoulder.set(
+        # # #         self.shoulder.calculate(self.shoulder.getPosition() * 10, 2.73),
+        # # #     )
+        # # elif self.stick2.getPOV() == 180:
+        # #     self.shoulder.set(
+        # #         self.shoulder.calculate(self.shoulder.getPosition() * 10, 4.3),
+        # #     )
+        # # elif self.stick2.getRawButton(5):
+        # #     self.shoulder.set(0.5)
+        # # elif self.stick2.getRawButton(6):
+        # #     self.shoulder.set(-0.5)
+        # # else:
+        # #     self.shoulder.set(0)
+
+        # # SHOULDER Manual
+        # elif self.stick2.getRawButton(5):
+        #     self.shoulder.set(0.5)
         # elif self.stick2.getRawButton(6):
-        #     self.shoulder.set(0.3)
+        #     self.shoulder.set(-0.5)
         # else:
         #     self.shoulder.set(0)
 
-        # # SHOULDER PID
-        if self.stick2.getRawButton(5):
-            self.shoulder.set(
-                self.shoulder.calculate(self.shoulder.getPosition(), 0.122)
-            )
-        elif self.stick2.getRawButton(6):
-            self.shoulder.set(
-                self.shoulder.calculate(self.shoulder.getPosition(), 0.0048)
-            )
-        else:
-            self.shoulder.set(0)
+        # TRAPEZOIDAL ELEVATOR Manual
 
-        # TRAPEZOIDAL ELEVATOR
-        if self.stick2.getPOV() == 0:
-            self.elevator.set(-0.3)
-            self.color(0, 0, 255)
-        elif self.stick2.getPOV() == 180:
-            self.elevator.set(0.3)
-            self.color(0, 0, 50)
-        # elif self.stick.getPOV() == 0:
+        # WRIST PID SET
+        self.wrist.set(
+            self.wrist.calculate(self.wrist.getPosition(), self.wristSetpoint)
+        )
+
+        # # Elevator Trapezoidal + Shoulder
+        # if self.stick2.getPOV() == 0:
         #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), -3)
+        #         self.elevator.calculate(self.elevator.getPosition(), -6.84)
         #         + -self.elevator.elevatorFeedForward.calculate(0.3)
         #     )
-        #     self.color(0, 0, 255)
-        # elif self.stick.getPOV() == 180:
+        #     self.shoulder.set(
+        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.0007),
+
+        #     )
+        #     self.blueGradient()
+
+        # elif self.stick2.getPOV() == 90:
         #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), 0)
+        #         self.elevator.calculate(self.elevator.getPosition(), -3.222)
         #         + -self.elevator.elevatorFeedForward.calculate(0.3)
         #     )
-        #     self.color(0, 0, 50)
+        #     self.shoulder.set(
+        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.925),
+        #     )
+        #     self.blueGradient()
+
+        # elif self.stick2.getPOV() == 180:
+        #     self.elevator.set(
+        #         self.elevator.calculate(self.elevator.getPosition(), -1.16)
+        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
+        #     )
+        #     self.shoulder.set(
+        #         self.clamp(
+        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.913),
+        #             0.142,
+        #             0.867,
+        #         )
+        #     )
+        #     self.blueGradient()
+
+        # elif self.stick2.getPOV() == 270:
+        #     self.elevator.set(
+        #         self.elevator.calculate(self.elevator.getPosition(), -2.13)
+        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
+        #     )
+        #     self.shoulder.set(
+        #         self.clamp(
+        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.114),
+        #             0.142,
+        #             0.867,
+        #         )
+        #     )
+        #     self.blueGradient()
         # else:
         #     self.elevator.set(-self.elevator.elevatorFeedForward.calculate(0))
 
-        # self.wrist.set(
-        #     self.wrist.calculate(self.wrist.getPosition(), self.wristSetpoint)
-        # )
+        # wrist toggle
+        if self.stick2.getRawButton(1):
+            if self.state == True:
+                self.wristSetpoint = 0.37
+                self.state = False
+                self.color(255, 0, 255)
+                time.sleep(0.1)
+            elif self.state == False:
+                self.wristSetpoint = 0.63
+                self.state = True
+                self.color(0, 255, 0)
+                time.sleep(0.1)
 
-        # if self.stick2.getRawButton(1):
-        #     if self.state == True:
-        #         self.wristSetpoint = 0.52
-        #         self.state = False
-        #         self.color(0, 0, 255)
-        #         time.sleep(0.1)
-        #     elif self.state == False:
-        #         self.wristSetpoint = 0.267
-        #         self.state = True
-        #         self.color(0, 255, 0)
-        #         time.sleep(0.1)
+        # # WRIST MANUAL
+        # if self.stick.getRawButton(1):
+        #     self.wrist.set(0.5)
+        # elif self.stick.getRawButton(2):
+        #     self.wrist.set(-0.5)
+        # else:
+        #     self.wrist.set(0)
 
         # LIMELIGHT ALIGN
         if self.stick.getRawButton(10) and self.tx.getDouble(0) == range(10, 15):
@@ -342,7 +475,8 @@ class MyRobot(wpilib.TimedRobot):
         # No trajectory in Teleop
         Trajectory().setCmd(None)
 
-    #########################################################
+        #########################################################
+
     ## Disabled-Specific init and update
     def disabledPeriodic(self):
         self.autoSequencer.updateMode()
@@ -351,7 +485,8 @@ class MyRobot(wpilib.TimedRobot):
     def disabledInit(self):
         self.autoSequencer.updateMode(True)
 
-    #########################################################
+        #########################################################
+
     ## Test-Specific init and update
     def testInit(self):
         # wpilib.LiveWindow.setEnabled(False)
@@ -360,7 +495,8 @@ class MyRobot(wpilib.TimedRobot):
     def testPeriodic(self):
         pass
 
-    #########################################################
+        #########################################################
+
     ## Cleanup
     def endCompetition(self):
         # Sometimes `robopy test pyfrc_test.py` will invoke endCompetition() without completing robotInit(),
@@ -387,6 +523,39 @@ class MyRobot(wpilib.TimedRobot):
             self.ledData[i].setRGB(R, G, B)
         self.rainbowFirstPixelHue += 3
         self.rainbowFirstPixelHue %= 180
+
+    def blueGradient(self):
+        for i in range(kLEDBuffer):
+            hue = self.elevator.getPosition() * -35
+            self.ledData[i].setRGB(0, 0, int(hue))
+
+    def getStickButtonInputs(self) -> bool:
+        buttonStates = [
+            self.stick.getRawButton(1),
+            self.stick.getRawButton(2),
+            self.stick.getRawButton(3),
+            self.stick.getRawButton(4),
+            self.stick.getRawButton(5),
+            # self.stick.getRawButton(6),
+            self.stick.getPOV() == 0,
+            self.stick.getPOV() == 90,
+            self.stick.getPOV() == 180,
+            self.stick.getPOV() == 270,
+        ]
+        print(buttonStates)
+        return any(buttonStates)
+
+    def getStick2ButtonInputs(self):
+        return any(
+            [
+                self.stick2.getAButton,
+                self.stick2.getBButton,
+                self.stick2.getXButton,
+                self.stick2.getYButton,
+                self.stick2.getLeftBumper,
+                self.stick2.getRightBumper,
+            ]
+        )
 
 
 def remoteRIODebugSupport():

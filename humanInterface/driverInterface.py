@@ -12,7 +12,7 @@ from utils.signalLogging import addLog
 from wpimath import applyDeadband
 from wpimath.filter import SlewRateLimiter
 from wpilib import XboxController
-from subsystems.Components import Shoulder, Wrist, Elevator, Intake, Climb
+from subsystems.Components import Shoulder, Wrist, Elevator, Intake
 import enum
 
 kElevatorButton = 0

@@ -17,9 +17,12 @@ from wpiutil import Sendable
 from wpilib import DigitalInput
 
 # SHOULDER VALUES
-shoulderkP = 3.8
+shoulderkP = 8
 shoulderkI = 0.0
-shoulderkD = 0.12
+shoulderkD = 0.08
+# shoulderkP = 1
+# shoulderkI = 0.0
+# shoulderkD = 0.6
 
 # ELEVATOR VALUES
 elevatorkP = 2
@@ -34,8 +37,8 @@ kV = 0
 kA = 0
 
 # WRIST VALUES
-wristkP = 0.47
-wristkI = 0.04
+wristkP = 0.8
+wristkI = 0.2
 wristkD = 0
 
 wristkS = 0
@@ -58,8 +61,6 @@ class Shoulder:
 
         self.shoulderPid = PIDController(shoulderkP, shoulderkI, shoulderkD)
 
-        self.shoulderPid.setTolerance(0, 0)
-
         self.shoulder.setInverted(True)
 
     def set(self, speed: float) -> None:
@@ -70,9 +71,6 @@ class Shoulder:
 
     def calculate(self, measurement: float, setPoint: float) -> float:
         return self.shoulderPid.calculate(measurement, setPoint)
-
-    def setIntegratorRange(self, min: float, max: float) -> None:
-        self.shoulderPid.setIntegratorRange(min, max)
 
 
 class Intake:
@@ -103,7 +101,7 @@ class Elevator:
             0.02,
         )
 
-        self.elevator.setInverted(True)
+        self.elevator.setInverted(False)
 
         self.elevatorFeedForward = ElevatorFeedforward(kS, kG, kV, kA)
 
