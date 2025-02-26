@@ -1,7 +1,8 @@
 import sys
 import time
-from math import pi
+from math import pi, sqrt
 
+from drivetrain.poseEstimation.drivetrainPoseEstimator import DrivetrainPoseEstimator
 import wpilib
 from networktables import NetworkTables
 from phoenix6 import SignalLogger
@@ -10,6 +11,7 @@ from wpilib import AddressableLED, Color, DigitalInput, LEDPattern, LiveWindow
 from wpimath.geometry import Pose2d, Rotation2d, Translation2d
 from wpimath.trajectory import TrapezoidProfile
 from wpiutil import SendableRegistry
+from wpimath.controller import PIDController
 
 from AutoSequencerV2.autoSequencer import AutoSequencer
 from dashboard import Dashboard
@@ -17,6 +19,7 @@ from drivetrain.controlStrategies.autoDrive import AutoDrive
 from drivetrain.controlStrategies.trajectory import Trajectory
 from drivetrain.drivetrainCommand import DrivetrainCommand
 from drivetrain.drivetrainControl import DrivetrainControl
+from drivetrain.poseEstimation.drivetrainPoseEstimator import DrivetrainPoseEstimator
 from humanInterface.driverInterface import DriverInterface
 
 # from humanInterface.ledControl import LEDControl
@@ -46,7 +49,7 @@ class MyRobot(wpilib.TimedRobot):
         # pylint: disable=attribute-defined-outside-init
         self.enableLiveWindowInTest(True)
         self.state = True
-        self.wristSetpoint = 0.616
+        self.wristSetpoint = 0.447
 
         # LEDS
         self.led = wpilib.AddressableLED(0)
@@ -59,11 +62,15 @@ class MyRobot(wpilib.TimedRobot):
         self.limitSwitch = DigitalInput(7)
 
         # Limelight
+        NetworkTables.initialize(server="10.67.58.3")
+        self.limeLight2 = NetworkTables.getTable("limelight-kmrobob")
+        self.Priority2 = self.limeLight2.getEntry("tid")
+
         NetworkTables.initialize(server="10.67.58.2")
         self.limeLight = NetworkTables.getTable("limelight-kmrobot")
-        self.tx = self.limeLight.getEntry("tx")
-
-        # self.tx = self.limeLight.putNumber("<tx>", 0)
+        # self.tx = self.limeLight.getEntry("tx").getDouble(0)
+        # self.ty = self.limeLight.getEntry("ty").getDouble(0)
+        self.Priority = self.limeLight.getEntry("tid")
 
         # Elevator
         self.elevator = Components.Elevator(13)
@@ -84,10 +91,21 @@ class MyRobot(wpilib.TimedRobot):
         # )
 
         # CLimber
-        self.climb = SparkMax(10, SparkMax.MotorType.kBrushless)
-        self.climbEncoder = self.climb.getEncoder()
+        self.climb = Components.Climb(10)
 
-        #################################################################################################################################
+        #########################################################
+
+        self.drivePid = PIDController(2.5, 0, 0.02, 0.01)
+        self.drivePidX = PIDController(0.04, 0, 0.004, 0.01)
+        self.drivePidY = PIDController(0.08, 0, 0.008, 0.01)
+
+        self.AutodrivePid = PIDController(0.5, 0, 0.02, 0.01)
+        self.AutodrivePidX = PIDController(0.03, 0, 0.003, 0.01)
+        self.AutodrivePidY = PIDController(0.04, 0, 0.004, 0.01)
+
+        self.leftdrivePid = PIDController(1, 0, 0.02, 0.01)
+        self.leftdrivePidX = PIDController(0.03, 0, 0.003, 0.01)
+        self.leftdrivePidY = PIDController(0.04, 0, 0.004, 0.01)
 
         self.timer = wpilib.Timer()
 
@@ -121,24 +139,26 @@ class MyRobot(wpilib.TimedRobot):
         self.rioMonitor = RIOMonitor()
         self.pwrMon = PowerMonitor()
 
-        # Normal robot code updates every 20ms, but not everything needs to be that fast.
-        # Register slower-update periodic functions
-        # self.addPeriodic(self.pwrMon.update, 0.2, 0.0)
-        # self.addPeriodic(self.crashLogger.update, 1.0, 0.0)
-        # self.addPeriodic(CalibrationWrangler().update, 0.5, 0.0)
-        # self.addPeriodic(FaultWrangler().update, 0.2, 0.0)
-
         self.autoHasRun = False
 
     def robotPeriodic(self):
+        # print("Elevator", self.elevator.getPosition())
+        # print("Wrist", self.wrist.getPosition())
+        # print("Shoulder", self.shoulder.getPosition())
+        # # print("WristSetpoint", self.wrist.wristPid.getSetpoint())
+        print("TX", self.limeLight.getEntry("tx").getDouble(0))
+        print("Ty", self.limeLight.getEntry("ty").getDouble(0))
+        print("TX2", self.limeLight2.getEntry("tx").getDouble(0))
+        print("Ty2", self.limeLight2.getEntry("ty").getDouble(0))
+        print("ID", int(self.Priority.getDouble(0)))
+        print("ID2", int(self.Priority.getDouble(0)))
+        print("POSE", self.driveTrain.poseEst.getCurEstPose().rotation().radians())
+        # print("ClimbEnc", self.climb.getPosition())
+        # print("timer", self.timer.get())
+
+        #########################################################
+
         self.led.setData(self.ledData)
-        self.getStickButtonInputs()
-        # print("Joystick:", self.stick.getRawButton(1) == True)
-        # print(f"Outputs:  {self.getStickButtonInputs}")
-        print("Elevator", self.elevator.getPosition())
-        print("Wrist", self.wrist.getPosition())
-        print("Shoulder", self.shoulder.getPosition())
-        print("WristSetpoint", self.wrist.wristPid.getSetpoint())
 
         if self.limitSwitch.get() == False:
             self.elevator.elevatorEncoder.setPosition(0)
@@ -166,11 +186,6 @@ class MyRobot(wpilib.TimedRobot):
         logUpdate()
         self.stt.end()
 
-        #########################################################
-
-    def clamp(self, value: float, minval: float, maxval: float):
-        return max(min(value, maxval), minval)
-
     def autonomousInit(self):
         # Start up the autonomous sequencer
         self.autoSequencer.initialize()
@@ -186,11 +201,60 @@ class MyRobot(wpilib.TimedRobot):
     def autonomousPeriodic(self):
         self.autoSequencer.update()
 
+        print("timer", self.timer.get())
+
         # Operators cannot control in autonomous
         self.driveTrain.setManualCmd(DrivetrainCommand())
 
-        if self.timer == 0.7:
-            self.color(0, 255, 0)
+        if self.timer.get() >= 6 and self.timer.get() <= 8:
+            print("RANGE")
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.226
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -6.22)
+            )
+
+        if self.timer.get() >= 8 and self.timer.get() <= 8.5:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.359
+                )
+            )
+            self.intake.set(0.3)
+
+        if self.timer.get() >= 8.6 and self.timer.get() <= 9:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.226
+                )
+            )
+
+        # CHANGE PRIORITY TO 20 AT COMP
+        if (
+            self.timer.get() >= 2
+            and self.timer.get() <= 8
+            and (int(self.Priority.getDouble(0) == 7))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.AutodrivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.AutodrivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.AutodrivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        1.032,
+                    ),
+                )
+            )
+
+        if self.timer.get() >= 2.2:
+            self.autoSequencer.end()
 
     def autonomousExit(self):
         self.autoSequencer.end()
@@ -212,20 +276,10 @@ class MyRobot(wpilib.TimedRobot):
     def teleopPeriodic(self):
         # TODO - this is technically one loop delayed, which could induce lag
         # Probably not noticeable, but should be corrected.
-        # self.driveTrain.setManualCmd(self.dInt.getCmd())
-        # print("Tx:", self.tx.getDouble(0))
-        # print("Elevator", self.elevator.getPosition())
-        # print("Wrist", self.wrist.getPosition())
-        # print("Shoulder", self.shoulder.getPosition())
-        # print("time", self.timer.get())
-        # print("WristError", self.wrist.wristPid.getError())
-        # print("Wrist", self.wrist.getPosition())
-        # print("Climb", self.climbEncoder.getPosition())
 
         if self.timer.get() >= 125:
-            self.color(160, 100, 100)
-
-        # # COLOR
+            self.color(255, 0, 0)
+            # self.climb.set(self.climb.calculate(self.climb.getPosition, value))
 
         # CLIMBER
         if self.stick.getRawButton(3):
@@ -237,70 +291,17 @@ class MyRobot(wpilib.TimedRobot):
         else:
             self.climb.set(0)
 
-        # INTAKE
-        if self.stick2.getRightTriggerAxis() > 0:
-            self.intake.set(-1)
-        elif self.stick2.getLeftTriggerAxis() > 0:
-            self.intake.set(1)
-        else:
-            self.intake.set(-self.intake.intakeFeed.calculate(0.1))
+        #########################################################
 
-        # if self.stick.getPOV() == 0:
-        # self.shoulder.set(
-        #     self.shoulder.calculate(self.shoulder.getPosition() * 10, 3.16),
-        # )
+        # WRIST PID SET
+        self.wrist.set(
+            self.wrist.calculate(self.wrist.getPosition(), self.wristSetpoint)
+        )
 
-        # self.elevator.set(
-        #     self.elevator.calculate(self.elevator.getPosition(), -6.84)
-        #     + -self.elevator.elevatorFeedForward.calculate(0.3)
-        # )
-
-        # self.blueGradient()
-        # elif self.stick.getPOV() == 180:
-        # self.shoulder.set(
-        #     self.shoulder.calculate(self.shoulder.getPosition() * 10, 4),
-        # )
-        # self.elevator.set(
-        #     self.elevator.calculate(self.elevator.getPosition(), -3.222)
-        #     + -self.elevator.elevatorFeedForward.calculate(0.3)
-        # )
-        # self.blueGradient()
-        # if self.stick.getRawButton(5) == True:
-        #     self.elevator.set(0.3)
-        # elif self.stick.getRawButton(6) == True:
-        #     self.elevator.set(-0.3)
-        # else:
-        #     self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
-
-        # if self.stick.getRawButton(5) == True:
-        #     self.elevator.set(-0.3)
-        #     self.blueGradient()
-        # elif self.getStickButtonInputs() == False:
-        #     self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
-
-        # if self.stick.getPOV() == 0:
-        #     self.shoulder.set(
-        #         self.shoulder.calculate(self.shoulder.getPosition(), 0.34),
-        #     )
-
-        #     # self.elevator.set(
-        #     #     self.elevator.calculate(self.elevator.getPosition(), -6.84)
-        #     #     + self.elevator.elevatorFeedForward.calculate(0.3)
-        #     # )
-        # elif self.stick.getPOV() == 180:
-        #     self.shoulder.set(
-        #         self.shoulder.calculate(self.shoulder.getPosition(), 0.4),
-        #     )
-        # else:
-        #     self.shoulder.set(0)
-        # self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
-
-        # OTher wrist preset value = 0.87
-
-        if self.stick2.getPOV() == 90:
+        if self.stick2.getRawButton(5):
             self.shoulder.set(0.3)
 
-        elif self.stick2.getPOV() == 270:
+        elif self.stick2.getRawButton(6):
             self.shoulder.set(-0.3)
 
         elif self.stick2.getPOV() == 0:
@@ -310,167 +311,356 @@ class MyRobot(wpilib.TimedRobot):
             self.elevator.set(-0.3)
 
         # CORAL STATION PRESET
-        elif self.stick.getPOV() == 0:
-            # self.shoulder.set(
-            #     self.shoulder.shoulderPid.calculate(
-            #         self.shoulder.shoulderEncoder.getOutput(), 0.267
-            #     )
-            # )
-            self.elevator.set(
-                -self.elevator.calculate(self.elevator.getPosition(), -5.04)
+        elif self.stick.getRawButton(6):
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.192
+                )
             )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -0.57)
+            )
+            self.wristSetpoint = 0.70
+            self.color(100, 0, 145)
+
+        # TROUGH PRESET
+        elif self.stick.getPOV() == 180:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.42
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -1.95)
+            )
+            self.blueGradient()
+
+        # LEVEL TWO - L2
+        elif self.stick.getPOV() == 90:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.259
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -1.21)
+            )
+            self.blueGradient()
+
+        # LEVEL THREE - L3
+        elif self.stick.getPOV() == 0:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.289
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -3.29)
+            )
+            self.blueGradient()
+
+        # LEVEL FOUR - L4
+        elif self.stick.getPOV() == 270:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.226
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -6.22)
+            )
+            self.blueGradient()
+
+        # BARGE PRESET - 0.379 - scoring preset
+        elif self.stick.getRawButton(8):
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.255
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -7.73)
+            )
+            self.blueGradient()
+
+        # INTAKE
+        elif self.stick.getRightTriggerAxis() > 0:
+            self.intake.set(-1)
+        elif self.stick.getLeftTriggerAxis() > 0:
+            self.intake.set(1)
+
+        # SCORING PRESET (SHOULDER + INTAKE)
+        elif self.stick2.getRightTriggerAxis() > 0:
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.359
+                )
+            )
+            self.intake.set(0.5)
+
+        # SAFETY DRIVING PRESET
+        elif self.stick.getRawButton(5):
+            self.shoulder.set(
+                self.shoulder.shoulderPid.calculate(
+                    self.shoulder.shoulderEncoder.getOutput(), 0.225
+                )
+            )
+            self.elevator.set(
+                -self.elevator.calculate(self.elevator.getPosition(), -0.5)
+            )
+            self.wristSetpoint = 0.447
 
         else:
             self.elevator.set(self.elevator.elevatorFeedForward.calculate(0))
-            # self.shoulder.set(0)
+            self.shoulder.set(0)
+            self.intake.set(-self.intake.intakeFeed.calculate(0.1))
 
-        #     # self.shoulder.set(0.0)
-        #     self.elevator.elevatorFeedForward.calculate(0)
-
-        # SHOULDER Clamped Shoulder
-        # # if self.stick2.getPOV() == 0:
-        # # #     self.shoulder.set(
-        # # #         self.shoulder.calculate(self.shoulder.getPosition() * 10, 2.73),
-        # # #     )
-        # # elif self.stick2.getPOV() == 180:
-        # #     self.shoulder.set(
-        # #         self.shoulder.calculate(self.shoulder.getPosition() * 10, 4.3),
-        # #     )
-        # # elif self.stick2.getRawButton(5):
-        # #     self.shoulder.set(0.5)
-        # # elif self.stick2.getRawButton(6):
-        # #     self.shoulder.set(-0.5)
-        # # else:
-        # #     self.shoulder.set(0)
-
-        # # SHOULDER Manual
-        # elif self.stick2.getRawButton(5):
-        #     self.shoulder.set(0.5)
-        # elif self.stick2.getRawButton(6):
-        #     self.shoulder.set(-0.5)
-        # else:
-        #     self.shoulder.set(0)
-
-        # TRAPEZOIDAL ELEVATOR Manual
-
-        # WRIST PID SET
-        self.wrist.set(
-            self.wrist.calculate(self.wrist.getPosition(), self.wristSetpoint)
-        )
-
-        # # Elevator Trapezoidal + Shoulder
-        # if self.stick2.getPOV() == 0:
-        #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), -6.84)
-        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
-        #     )
-        #     self.shoulder.set(
-        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.0007),
-
-        #     )
-        #     self.blueGradient()
-
-        # elif self.stick2.getPOV() == 90:
-        #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), -3.222)
-        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
-        #     )
-        #     self.shoulder.set(
-        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.925),
-        #     )
-        #     self.blueGradient()
-
-        # elif self.stick2.getPOV() == 180:
-        #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), -1.16)
-        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
-        #     )
-        #     self.shoulder.set(
-        #         self.clamp(
-        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.913),
-        #             0.142,
-        #             0.867,
-        #         )
-        #     )
-        #     self.blueGradient()
-
-        # elif self.stick2.getPOV() == 270:
-        #     self.elevator.set(
-        #         self.elevator.calculate(self.elevator.getPosition(), -2.13)
-        #         + -self.elevator.elevatorFeedForward.calculate(0.3)
-        #     )
-        #     self.shoulder.set(
-        #         self.clamp(
-        #             self.shoulder.calculate(self.shoulder.getPosition(), 0.114),
-        #             0.142,
-        #             0.867,
-        #         )
-        #     )
-        #     self.blueGradient()
-        # else:
-        #     self.elevator.set(-self.elevator.elevatorFeedForward.calculate(0))
-
-        # wrist toggle
+        # wrist toggle - 0.37
         if self.stick2.getRawButton(1):
             if self.state == True:
-                self.wristSetpoint = 0.37
+                self.wristSetpoint = 0.20
                 self.state = False
                 self.color(255, 0, 255)
                 time.sleep(0.1)
+
             elif self.state == False:
-                self.wristSetpoint = 0.63
+                self.wristSetpoint = 0.447
                 self.state = True
                 self.color(0, 255, 0)
                 time.sleep(0.1)
 
-        # # WRIST MANUAL
-        # if self.stick.getRawButton(1):
-        #     self.wrist.set(0.5)
-        # elif self.stick.getRawButton(2):
-        #     self.wrist.set(-0.5)
-        # else:
-        #     self.wrist.set(0)
-
-        # LIMELIGHT ALIGN
-        if self.stick.getRawButton(10) and self.tx.getDouble(0) == range(10, 15):
-            print("right")
-            self.driveTrain.setManualCmd(DrivetrainCommand(0, -0.3, 0))
-            self.color(0, 255, 30)
-        elif self.stick.getRawButton(10) and self.tx.getDouble(0) >= 15.001:
-            print("right")
-            self.driveTrain.setManualCmd(DrivetrainCommand(0, -0.6, 0))
-            self.color(0, 255, 30)
-        elif self.stick.getRawButton(10) and self.tx.getDouble(0) == range(-10, -15):
-            print("left")
-            self.driveTrain.setManualCmd(DrivetrainCommand(0, 0.3, 0))
-            self.color(30, 255, 0)
-        elif self.stick.getRawButton(10) and self.tx.getDouble(0) <= -15.001:
-            print("left")
-            self.driveTrain.setManualCmd(DrivetrainCommand(0, 0.6, 0))
-            self.color(30, 255, 0)
+        # LIMELIGHT ALIGN (Left Side Values: TX: 27.58 TY: 5.74) (Right Side Values: TX: -10.6 TY: 8.37)
+        if (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 7))
+            or (int(self.Priority.getDouble(0) == 18))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        0,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 8))
+            or (int(self.Priority.getDouble(0) == 17))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        1,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 9))
+            or (int(self.Priority.getDouble(0) == 22))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        2.104,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 10))
+            or (int(self.Priority.getDouble(0) == 21))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -3.123,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 11))
+            or (int(self.Priority.getDouble(0) == 20))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -1.98,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(9)
+            and (int(self.Priority.getDouble(0) == 6))
+            or (int(self.Priority.getDouble(0) == 19))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 5.74
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), 27.58
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -1.12,
+                    ),
+                )
+            )
+        # LIMELIGHT ALIGN (Left Side Values: TX: 27.58 TY: 5.74) (Right Side Values: TX: -10.6 TY: 8.37)
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 7))
+            or (int(self.Priority.getDouble(0) == 18))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        0,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 8))
+            or (int(self.Priority.getDouble(0) == 17))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        1,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 9))
+            or (int(self.Priority.getDouble(0) == 22))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        2.104,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 10))
+            or (int(self.Priority.getDouble(0) == 21))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -3.123,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 11))
+            or (int(self.Priority.getDouble(0) == 20))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -2.03,
+                    ),
+                )
+            )
+        elif (
+            self.stick.getRawButton(10)
+            and (int(self.Priority.getDouble(0) == 6))
+            or (int(self.Priority.getDouble(0) == 19))
+        ):
+            self.driveTrain.setManualCmd(
+                DrivetrainCommand(
+                    self.drivePidY.calculate(
+                        self.limeLight.getEntry("ty").getDouble(0), 8.37
+                    ),
+                    self.drivePidX.calculate(
+                        self.limeLight.getEntry("tx").getDouble(0), -10.6
+                    ),
+                    self.drivePid.calculate(
+                        self.driveTrain.poseEst.getCurEstPose().rotation().radians(),
+                        -1.12,
+                    ),
+                )
+            )
         else:
             self.driveTrain.setManualCmd(self.dInt.getCmd())
-
-        # if self.dInt.getGyroResetCmd():
-        #     self.driveTrain.resetGyro()
-
-        # if self.dInt.getCreateObstacle():
-        #     # For test purposes, inject a series of obstacles around the current pose
-        #     ct = self.driveTrain.poseEst.getCurEstPose().translation()
-        #     tfs = [
-        #         # Translation2d(1.7, -0.5),
-        #         # Translation2d(0.75, -0.75),
-        #         # Translation2d(1.7, 0.5),
-        #         Translation2d(0.75, 0.75),
-        #         Translation2d(2.0, 0.0),
-        #         Translation2d(0.0, 1.0),
-        #         Translation2d(0.0, -1.0),
-        #     ]
-        #     for tf in tfs:
-        #         obs = PointObstacle(location=(ct + tf), strength=0.5)
-        #         self.autodrive.rfp.addObstacleObservation(obs)
-
-        # self.autodrive.setRequest(self.dInt.getAutoDrive())
 
         # No trajectory in Teleop
         Trajectory().setCmd(None)
@@ -526,36 +716,13 @@ class MyRobot(wpilib.TimedRobot):
 
     def blueGradient(self):
         for i in range(kLEDBuffer):
-            hue = self.elevator.getPosition() * -35
+            hue = self.elevator.getPosition() * -33
             self.ledData[i].setRGB(0, 0, int(hue))
 
-    def getStickButtonInputs(self) -> bool:
-        buttonStates = [
-            self.stick.getRawButton(1),
-            self.stick.getRawButton(2),
-            self.stick.getRawButton(3),
-            self.stick.getRawButton(4),
-            self.stick.getRawButton(5),
-            # self.stick.getRawButton(6),
-            self.stick.getPOV() == 0,
-            self.stick.getPOV() == 90,
-            self.stick.getPOV() == 180,
-            self.stick.getPOV() == 270,
-        ]
-        print(buttonStates)
-        return any(buttonStates)
-
-    def getStick2ButtonInputs(self):
-        return any(
-            [
-                self.stick2.getAButton,
-                self.stick2.getBButton,
-                self.stick2.getXButton,
-                self.stick2.getYButton,
-                self.stick2.getLeftBumper,
-                self.stick2.getRightBumper,
-            ]
-        )
+    def endLights(self):
+        for i in range(kLEDBuffer):
+            hue = self.timer.get() * 1.3
+            self.ledData[i].setRGB(int(hue), int(hue), int(hue))
 
 
 def remoteRIODebugSupport():

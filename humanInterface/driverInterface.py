@@ -49,6 +49,7 @@ class DriverInterface:
 
         # Navigation commands
         self.autoDrive = False
+        self.autoSteer = False
         self.createDebugObstacle = False
 
         # Utility - reset to zero-angle at the current pose
@@ -95,9 +96,10 @@ class DriverInterface:
             self.velYCmd = self.velYSlewRateLimiter.calculate(velCmdYRaw)
             self.velTCmd = self.velTSlewRateLimiter.calculate(velCmdRotRaw)
 
-            self.gyroResetCmd = self.ctrl.getAButton()
+            # self.gyroResetCmd = self.ctrl.getAButton()
 
             self.autoDrive = self.ctrl.getBButton()
+            self.autoSteer = self.ctrl.getAButton()
             self.createDebugObstacle = self.ctrl.getYButtonPressed()
 
             self.connectedFault.setNoFault()
@@ -118,6 +120,12 @@ class DriverInterface:
         retval.velY = self.velYCmd
         retval.velT = self.velTCmd
         return retval
+
+    def getAutoDrive(self) -> bool:
+        return self.autoDrive
+
+    def getAutoSteer(self) -> bool:
+        return self.autoSteer
 
     # def getAutoDrive(self) -> bool:
     #     return self.autoDrive

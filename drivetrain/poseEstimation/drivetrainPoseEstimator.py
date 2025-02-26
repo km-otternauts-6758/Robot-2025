@@ -9,7 +9,7 @@ from drivetrain.drivetrainPhysical import (
     ROBOT_TO_LEFTFRONT_CAM,
     ROBOT_TO_RIGHTFRONT_CAM,
     ROBOT_TO_LEFTBACK_CAM,
-    ROBOT_TO_RIGHTBACK_CAM
+    ROBOT_TO_RIGHTBACK_CAM,
 )
 from drivetrain.poseEstimation.drivetrainPoseTelemetry import DrivetrainPoseTelemetry
 from utils.faults import Fault
@@ -24,15 +24,22 @@ from wpimath.kinematics import SwerveModulePosition, SwerveModuleState
 # 3) "Position" refers to the position of the wheel, plus the position of the azimuth
 # Wheel position is preferred for odometry, since errors in velocity don't accumulate over time
 # This is especially important with Rev motors which filter their velocity by a huge amount
-# but the position is fairly accurate. 
-posTuple_t = tuple[SwerveModulePosition,SwerveModulePosition,SwerveModulePosition,SwerveModulePosition]
-stateTuple_t = tuple[SwerveModuleState,SwerveModuleState,SwerveModuleState,SwerveModuleState]
+# but the position is fairly accurate.
+posTuple_t = tuple[
+    SwerveModulePosition,
+    SwerveModulePosition,
+    SwerveModulePosition,
+    SwerveModulePosition,
+]
+stateTuple_t = tuple[
+    SwerveModuleState, SwerveModuleState, SwerveModuleState, SwerveModuleState
+]
+
 
 class DrivetrainPoseEstimator:
     """Wrapper class for all sensors and logic responsible for estimating where the robot is on the field"""
 
-    def __init__(self, initialModulePositions:posTuple_t):
-
+    def __init__(self, initialModulePositions: posTuple_t):
         # Represents our current best-guess as to our location on the field.
         self._curEstPose = Pose2d()
 
@@ -50,7 +57,6 @@ class DrivetrainPoseEstimator:
             WrapperedPoseEstPhotonCamera("ACAM1", ROBOT_TO_RIGHTFRONT_CAM),
             WrapperedPoseEstPhotonCamera("_ACAM3", ROBOT_TO_LEFTBACK_CAM),
             WrapperedPoseEstPhotonCamera("ACAM2", ROBOT_TO_RIGHTBACK_CAM),
-
         ]
         self._camTargetsVisible = False
         self._useAprilTags = True
@@ -64,7 +70,7 @@ class DrivetrainPoseEstimator:
 
         # Logging and Telemetry
         addLog("PE Vision Targets Seen", lambda: self._camTargetsVisible, "bool")
-        addLog("PE Gyro Angle", lambda:(self._curRawGyroAngle.degrees()), "deg")
+        addLog("PE Gyro Angle", lambda: (self._curRawGyroAngle.degrees()), "deg")
         self._telemetry = DrivetrainPoseTelemetry()
 
         # Simulation Only - maintain a rough estimate of pose from velocities
@@ -72,7 +78,7 @@ class DrivetrainPoseEstimator:
         # to produce a reasonable-looking simulated gyroscope.
         self._simPose = Pose2d()
 
-    def setKnownPose(self, knownPose:Pose2d):
+    def setKnownPose(self, knownPose: Pose2d):
         """Reset the robot's estimated pose to some specific position. This is useful if we know with certanty
         we are at some specific spot (Ex: start of autonomous)
 
@@ -87,7 +93,7 @@ class DrivetrainPoseEstimator:
             self._curRawGyroAngle, self._lastModulePositions, knownPose
         )
 
-    def update(self, curModulePositions:posTuple_t, curModuleSpeeds:stateTuple_t):
+    def update(self, curModulePositions: posTuple_t, curModuleSpeeds: stateTuple_t):
         """Periodic update, call this every 20ms.
 
         Args:
@@ -98,17 +104,22 @@ class DrivetrainPoseEstimator:
         # Add any vision observations to the pose estimate
         self._camTargetsVisible = False
 
-        if(self._useAprilTags):
+        if self._useAprilTags:
             for cam in self.cams:
                 cam.update(self._curEstPose)
                 observations = cam.getPoseEstimates()
                 for observation in observations:
                     self._poseEst.addVisionMeasurement(
-                        observation.estFieldPose, observation.time, (observation.xyStdDev, observation.xyStdDev, observation.rotStdDev)
+                        observation.estFieldPose,
+                        observation.time,
+                        (
+                            observation.xyStdDev,
+                            observation.xyStdDev,
+                            observation.rotStdDev,
+                        ),
                     )
                     self._camTargetsVisible = True
                 self._telemetry.addVisionObservations(observations)
-
 
         # Read the gyro angle
         self._gyroDisconFault.set(not self._gyro.isConnected())
@@ -136,14 +147,14 @@ class DrivetrainPoseEstimator:
         # Remember the module positions for next loop
         self._lastModulePositions = curModulePositions
 
-    def getCurEstPose(self)->Pose2d:
+    def getCurEstPose(self) -> Pose2d:
         """
         Returns:
             Pose2d: The most recent estimate of where the robot is at
         """
         return self._curEstPose
-    
-    def setUseAprilTags(self, use:bool):
+
+    def setUseAprilTags(self, use: bool):
         """
         Enables or disables pose estimate correction based on apriltag readings.
         Useful if the robot is known to be doing something (like tilting) where
@@ -152,5 +163,5 @@ class DrivetrainPoseEstimator:
         self._useAprilTags = use
 
     # Local helper to wrap the real hardware angle into a Rotation2d
-    def _getGyroAngle(self)->Rotation2d:
+    def _getGyroAngle(self) -> Rotation2d:
         return Rotation2d().fromDegrees(self._gyro.getAngle(self._gyro.getYawAxis()))

@@ -6,11 +6,13 @@ from drivetrain.drivetrainPhysical import (
     MAX_FWD_REV_SPEED_MPS,
     MAX_ROTATE_SPEED_RAD_PER_SEC,
 )
-#from drivetrain.controlStrategies.autoDrive import AutoDrive
+
+# from drivetrain.controlStrategies.autoDrive import AutoDrive
 from choreo.trajectory import SwerveSample
 from utils.calibration import Calibration
 from utils.signalLogging import addLog
 from utils.mathUtils import limit
+
 
 class HolonomicDriveController:
     """
@@ -24,7 +26,7 @@ class HolonomicDriveController:
     So we made our own.
     """
 
-    def __init__(self, name:str):
+    def __init__(self, name: str):
         self.curVx = 0
         self.curVy = 0
         self.curVtheta = 0
@@ -34,7 +36,7 @@ class HolonomicDriveController:
         self.transD = Calibration(f"{name} HDC Translation kD", 0.0)
         self.rotP = Calibration(f"{name} HDC Rotation kP", 2.0)
         self.rotI = Calibration(f"{name} HDC Rotation kI", 0.0)
-        self.rotD = Calibration(f"{name} HDC Rotation kD", .05)
+        self.rotD = Calibration(f"{name} HDC Rotation kD", 0.05)
 
         self.xFF = 0.0
         self.yFF = 0.0
@@ -43,12 +45,12 @@ class HolonomicDriveController:
         self.yFB = 0.0
         self.tFB = 0.0
 
-        addLog(f"{name} HDC xFF", lambda:self.xFF, "mps")
-        addLog(f"{name} HDC yFF", lambda:self.yFF, "mps")
-        addLog(f"{name} HDC tFF", lambda:self.tFF, "radpersec")
-        addLog(f"{name} HDC xFB", lambda:self.xFB, "mps")
-        addLog(f"{name} HDC yFB", lambda:self.yFB, "mps")
-        addLog(f"{name} HDC tFB", lambda:self.tFB, "radpersec")
+        addLog(f"{name} HDC xFF", lambda: self.xFF, "mps")
+        addLog(f"{name} HDC yFF", lambda: self.yFF, "mps")
+        addLog(f"{name} HDC tFF", lambda: self.tFF, "radpersec")
+        addLog(f"{name} HDC xFB", lambda: self.xFB, "mps")
+        addLog(f"{name} HDC yFB", lambda: self.yFB, "mps")
+        addLog(f"{name} HDC tFB", lambda: self.tFB, "radpersec")
 
         # Closed-loop control for the X position
         self.xCtrl = PIDController(
@@ -92,9 +94,9 @@ class HolonomicDriveController:
         # Feed-Forward - calculate how fast we should be going at this point in the trajectory
         xFF, yFF, tFF = trajCmd.get_chassis_speeds()
         cmdPose = trajCmd.get_pose()
-        return self.update2(xFF,yFF,tFF,cmdPose,curEstPose)
+        return self.update2(xFF, yFF, tFF, cmdPose, curEstPose)
 
-    def update2(self, xFF, yFF, tFF, cmdPose:Pose2d, curEstPose:Pose2d):
+    def update2(self, xFF, yFF, tFF, cmdPose: Pose2d, curEstPose: Pose2d):
         # Feed-Back - Apply additional correction if we're not quite yet at the spot on the field we
         #             want to be at.
         self.xFB = self.xCtrl.calculate(curEstPose.X(), cmdPose.X())
@@ -104,9 +106,9 @@ class HolonomicDriveController:
         )
 
         # Remember feed-forward value inputs
-        self.xFF = xFF 
-        self.yFF = yFF 
-        self.tFF = tFF 
+        self.xFF = xFF
+        self.yFF = yFF
+        self.tFF = tFF
 
         retVal = DrivetrainCommand()
         retVal.velX = limit(xFF + self.xFB, MAX_FWD_REV_SPEED_MPS)

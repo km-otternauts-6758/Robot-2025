@@ -25,7 +25,7 @@ shoulderkD = 0.08
 # shoulderkD = 0.6
 
 # ELEVATOR VALUES
-elevatorkP = 2
+elevatorkP = 2.2
 elevatorkI = 0
 elevatorkD = 0
 kDT = 0.02
@@ -51,6 +51,8 @@ intakekS = 0
 intakekG = 0
 intakekV = 0.2
 intakekA = 0
+
+ClimbP = 0.5
 
 
 class Shoulder:
@@ -97,7 +99,7 @@ class Elevator:
             elevatorkP,
             elevatorkI,
             elevatorkD,
-            TrapezoidProfile.Constraints(6, 15),
+            TrapezoidProfile.Constraints(8, 17),
             0.02,
         )
 
@@ -156,9 +158,17 @@ class Wrist:
         self.wristPid.setIntegratorRange(min, max)
 
 
-# class Climb:
-#     def __init__(self, MotorChannel: int) -> None:
-#         self.climb = SparkMax(MotorChannel, SparkMax.MotorType.kBrushless)
-#         self.climbEncoder = self.climb.getEncoder()
-#     def set(self, speed: float) -> None:
-#         self.climb.set(speed)
+class Climb:
+    def __init__(self, MotorChannel: int) -> None:
+        self.climb = SparkMax(MotorChannel, SparkMax.MotorType.kBrushless)
+        self.climbEncoder = wpilib.DutyCycle(wpilib.DigitalInput(4))
+        self.climbPid = PIDController(ClimbP, 0, 0)
+
+    def set(self, speed: float) -> None:
+        self.climb.set(speed)
+
+    def getPosition(self) -> float:
+        return self.climbEncoder.getOutput()
+
+    def calculate(self, measurement: float, setPoint: float) -> float:
+        return self.climbPid.calculate(measurement, setPoint)
